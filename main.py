@@ -5,10 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from app.models import (
     GenerateRequest,
-    StepsRequest,
     RefineRequest,
     GenerateResponse,
-    StepsResponse,
     RefineResponse,
     ErrorResponse,
     HealthResponse,
@@ -25,6 +23,7 @@ from app.core.dependencies import (
 from app.core.config import Config
 from app.core.logging import StructuredLogger
 from app.services.forge_service import ForgeService
+from app.services.graph_service import GraphProcessor
 from app.core.gemini_client import GeminiClientProtocol
 from google.genai import types
 from app.validators.file_validator import FileValidator
@@ -36,6 +35,8 @@ import os
 from dotenv import load_dotenv
 import uuid
 import time
+import json
+from typing import List
 
 load_dotenv()
 
@@ -44,7 +45,7 @@ async def lifespan(app: FastAPI):
     """Initialize application dependencies on startup"""
     deps = initialize_dependencies()
     logger = deps.get_logger()
-    logger.info("Application starting up", version="1.0.0")
+    logger.info("Application starting up", version="1.1.0")
     
     # Setup error handlers
     setup_error_handlers(app, logger)
@@ -56,8 +57,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Frankenstein's Forge API",
-    description="Multimodal AI API that processes images, audio, and text to generate creative ideas",
-    version="1.0.0",
+    description="Multimodal AI API with node graph system for weighted multi-modal fusion",
+    version="1.1.0",
     lifespan=lifespan
 )
 
@@ -67,7 +68,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this based on your needs
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -81,16 +82,10 @@ async def add_request_id_and_metrics(request: Request, call_next):
     request_id = str(uuid.uuid4())
     request.state.request_id = request_id
     
-    # Record start time for latency tracking
     start_time = time.time()
-    
-    # Process request
     response = await call_next(request)
-    
-    # Calculate latency
     latency_ms = (time.time() - start_time) * 1000
     
-    # Record metrics
     metrics_collector = get_metrics_collector()
     error_msg = None
     if response.status_code >= 400:
@@ -110,7 +105,12 @@ async def add_request_id_and_metrics(request: Request, call_next):
 
 @app.get("/")
 async def root():
-    """Serve the main website"""
+    """Serve the node-based graph interface"""
+    return FileResponse("static/index-nodes.html")
+
+@app.get("/classic")
+async def classic():
+    """Serve the classic form-based interface"""
     return FileResponse("static/index.html")
 
 @app.get("/health", response_model=HealthResponse)
@@ -119,45 +119,29 @@ async def health(
     gemini_client: GeminiClientProtocol = Depends(get_gemini_client),
     logger: StructuredLogger = Depends(get_logger)
 ):
-    """
-    Health check endpoint with dependency verification.
-    
-    Checks:
-    - API availability
-    - Gemini API accessibility
-    - Configuration validity
-    
-    Returns 200 if healthy, 503 if any dependency is unhealthy.
-    """
+    """Health check endpoint with dependency verification."""
     import asyncio
     from datetime import datetime
     
     dependencies = {}
     overall_status = "healthy"
     
-    # Check Gemini API accessibility with timeout
     async def check_gemini_api():
-        """Check if Gemini API is accessible"""
         try:
-            # Use a simple test call with timeout
             loop = asyncio.get_event_loop()
             
             def test_api():
-                # Try to generate minimal content as a health check
                 try:
                     gemini_client.generate_content(
                         model=config.ai_model,
                         contents=["test"],
-                        config=types.GenerateContentConfig(
-                            max_output_tokens=10
-                        )
+                        config=types.GenerateContentConfig(max_output_tokens=10)
                     )
                     return True
                 except Exception as e:
                     logger.error("Gemini API health check failed", error=str(e))
                     return False
             
-            # Run with 5 second timeout
             result = await asyncio.wait_for(
                 loop.run_in_executor(None, test_api),
                 timeout=5.0
@@ -175,16 +159,13 @@ async def health(
             logger.error("Gemini API health check error", error=str(e))
             return {"status": "error", "message": str(e)}
     
-    # Perform health checks
     try:
         gemini_status = await check_gemini_api()
         dependencies["gemini_api"] = gemini_status
         
-        # Mark as unhealthy if Gemini API is not accessible
         if gemini_status["status"] != "accessible":
             overall_status = "unhealthy"
         
-        # Add configuration status
         dependencies["configuration"] = {
             "status": "loaded",
             "model": config.ai_model
@@ -195,21 +176,17 @@ async def health(
         overall_status = "unhealthy"
         dependencies["error"] = str(e)
     
-    # Return appropriate status code
     status_code = 200 if overall_status == "healthy" else 503
     
     response = HealthResponse(
         status=overall_status,
-        version="1.0.0",
+        version="1.1.0",
         dependencies=dependencies,
         timestamp=datetime.utcnow().isoformat()
     )
     
     if status_code == 503:
-        return JSONResponse(
-            status_code=503,
-            content=response.model_dump()
-        )
+        return JSONResponse(status_code=503, content=response.model_dump())
     
     return response
 
@@ -223,53 +200,31 @@ async def generate_idea(
     config: Config = Depends(get_config),
     logger: StructuredLogger = Depends(get_logger)
 ):
-    """
-    Generate a creative idea from image, audio, and text inputs.
-    
-    - **image**: Upload an image file
-    - **audio**: Upload an audio file
-    - **text**: Provide text description
-    
-    Returns a creative, achievable idea based on all inputs.
-    """
+    """Generate a creative idea from image, audio, and text inputs (legacy endpoint)."""
     request_id = request.state.request_id
     
     logger.info(
-        "Processing generate request",
+        "Processing generate request (classic)",
         request_id=request_id,
         image_filename=image.filename,
         audio_filename=audio.filename,
         text_length=len(text)
     )
     
-    # Validate and sanitize text input
     validated_text = TextValidator.sanitize(text, max_length=5000)
     
-    # Validate text using Pydantic model
     try:
         text_request = GenerateRequest(text=validated_text)
         validated_text = text_request.text
     except Exception as e:
-        # Convert Pydantic validation errors to our custom ValidationError
-        raise ValidationError(
-            "Text validation failed",
-            details={"error": str(e)}
-        )
+        raise ValidationError("Text validation failed", details={"error": str(e)})
     
-    # Validate image file
     image_bytes = FileValidator.validate_image(image, config.max_image_size)
-    
-    # Validate audio file
     audio_bytes = FileValidator.validate_audio(audio, config.max_audio_size)
     
-    # Generate idea using ForgeService
     result = forge_service.generate_idea(image_bytes, audio_bytes, validated_text)
     
-    logger.info(
-        "Successfully generated idea",
-        request_id=request_id,
-        response_length=len(result)
-    )
+    logger.info("Successfully generated idea", request_id=request_id, response_length=len(result))
     
     return GenerateResponse(
         success=True,
@@ -282,75 +237,112 @@ async def generate_idea(
         request_id=request_id
     )
 
-@app.post("/generate-simple")
-async def generate_idea_simple(
-    request: Request,
-    image: UploadFile = File(...),
-    audio: UploadFile = File(...),
-    text: str = Form(...),
-    forge_service: ForgeService = Depends(get_forge_service),
-    config: Config = Depends(get_config),
-    logger: StructuredLogger = Depends(get_logger)
-):
-    """
-    Simplified endpoint that returns just the generated idea text.
-    """
-    request_id = request.state.request_id
-    
-    logger.info(
-        "Processing generate-simple request",
-        request_id=request_id
-    )
-    
-    # Validate and sanitize text input
-    validated_text = TextValidator.sanitize(text, max_length=5000)
-    
-    # Validate image file
-    image_bytes = FileValidator.validate_image(image, config.max_image_size)
-    
-    # Validate audio file
-    audio_bytes = FileValidator.validate_audio(audio, config.max_audio_size)
-    
-    # Generate idea using ForgeService
-    result = forge_service.generate_idea(image_bytes, audio_bytes, validated_text)
-    
-    return {"idea": result}
 
-@app.post("/generate-steps", response_model=StepsResponse)
-async def generate_steps(
+@app.post("/generate-from-graph")
+async def generate_from_graph(
     request: Request,
-    request_body: StepsRequest,
-    forge_service: ForgeService = Depends(get_forge_service),
+    graph_metadata: str = Form(..., description="JSON string of graph structure"),
+    files: List[UploadFile] = File(..., description="Image and audio files"),
+    config: Config = Depends(get_config),
+    gemini_client: GeminiClientProtocol = Depends(get_gemini_client),
     logger: StructuredLogger = Depends(get_logger)
 ):
     """
-    Generate implementation steps for a given idea.
+    Generate idea from node graph with multi-modal fusion.
+    
+    This endpoint processes the complete graph structure, calculating
+    influence scores for each node based on connections and weights.
     """
     request_id = request.state.request_id
     
-    logger.info(
-        "Processing generate-steps request",
-        request_id=request_id,
-        idea_length=len(request_body.idea)
-    )
+    logger.info("Processing graph generation request", request_id=request_id, file_count=len(files))
     
-    # Validate and sanitize idea text
-    validated_idea = TextValidator.sanitize(request_body.idea, max_length=2000)
-    
-    # Generate steps using ForgeService
-    steps = forge_service.generate_steps(validated_idea)
-    
-    logger.info(
-        "Successfully generated steps",
-        request_id=request_id,
-        steps_length=len(steps)
-    )
-    
-    return StepsResponse(
-        success=True,
-        steps=steps,
-        request_id=request_id
-    )
+    try:
+        metadata = json.loads(graph_metadata)
+        
+        nodes = metadata.get('nodes', [])
+        connections = metadata.get('connections', [])
+        
+        if not nodes:
+            raise ValidationError("Graph must contain at least one node", details={"reason": "empty_graph"})
+        
+        if not connections:
+            raise ValidationError("Graph must contain at least one connection", details={"reason": "no_connections"})
+        
+        logger.info("Graph structure", node_count=len(nodes), connection_count=len(connections))
+        
+        # Process files and match to nodes
+        image_files = {}
+        audio_files = {}
+        
+        for file in files:
+            node_id = file.filename.split('-')[0] if '-' in file.filename else None
+            
+            if not node_id:
+                continue
+            
+            file_content = await file.read()
+            await file.seek(0)
+            
+            # Create a temporary UploadFile-like object for validation
+            from io import BytesIO
+            temp_file = type('obj', (object,), {
+                'file': BytesIO(file_content),
+                'filename': file.filename,
+                'content_type': file.content_type
+            })()
+            
+            if file.content_type and file.content_type.startswith('image/'):
+                validated_image = FileValidator.validate_image(temp_file, config.max_image_size)
+                image_files[node_id] = validated_image
+                logger.debug(f"Added image for node {node_id}")
+            elif file.content_type and file.content_type.startswith('audio/'):
+                validated_audio = FileValidator.validate_audio(temp_file, config.max_audio_size)
+                audio_files[node_id] = validated_audio
+                logger.debug(f"Added audio for node {node_id}")
+        
+        # Validate text content
+        for node in nodes:
+            if node.get('type') == 'text':
+                content = node.get('content', '')
+                validated_content = TextValidator.sanitize(content, max_length=5000)
+                node['content'] = validated_content
+        
+        # Create graph processor
+        graph_processor = GraphProcessor(
+            client=gemini_client,
+            config=config,
+            logger=logger
+        )
+        
+        # Generate idea from graph
+        idea = graph_processor.generate_from_graph(
+            nodes=nodes,
+            connections=connections,
+            image_files=image_files,
+            audio_files=audio_files
+        )
+        
+        logger.info("Successfully generated idea from graph", request_id=request_id, idea_length=len(idea))
+        
+        return {
+            "success": True,
+            "idea": idea,
+            "request_id": request_id,
+            "graph_info": {
+                "nodes": len(nodes),
+                "connections": len(connections),
+                "images_processed": len(image_files),
+                "audio_processed": len(audio_files)
+            }
+        }
+        
+    except json.JSONDecodeError as e:
+        raise ValidationError("Invalid graph metadata JSON", details={"error": str(e)})
+    except Exception as e:
+        logger.error("Failed to generate from graph", exc_info=e, request_id=request_id)
+        raise
+
 
 @app.post("/refine-idea", response_model=RefineResponse)
 async def refine_idea(
@@ -359,9 +351,7 @@ async def refine_idea(
     forge_service: ForgeService = Depends(get_forge_service),
     logger: StructuredLogger = Depends(get_logger)
 ):
-    """
-    Refine or create variations of an existing idea.
-    """
+    """Refine or create variations of an existing idea (legacy endpoint)."""
     request_id = request.state.request_id
     
     logger.info(
@@ -371,18 +361,10 @@ async def refine_idea(
         refinement_type=request_body.type
     )
     
-    # Validate and sanitize idea text
     validated_idea = TextValidator.sanitize(request_body.idea, max_length=2000)
-    
-    # Refine idea using ForgeService
     refined = forge_service.refine_idea(validated_idea, request_body.type)
     
-    logger.info(
-        "Successfully refined idea",
-        request_id=request_id,
-        refined_length=len(refined),
-        refinement_type=request_body.type
-    )
+    logger.info("Successfully refined idea", request_id=request_id, refined_length=len(refined), refinement_type=request_body.type)
     
     return RefineResponse(
         success=True,
@@ -392,35 +374,25 @@ async def refine_idea(
 
 @app.get("/stats", response_model=StatsResponse)
 async def get_stats():
-    """
-    Get API usage statistics (for future analytics).
-    """
+    """Get API usage statistics."""
     return StatsResponse(
         success=True,
         stats={
-            "version": "1.0.0",
+            "version": "1.1.0",
             "model": "gemini-2.0-flash-exp",
             "features": [
                 "multimodal_generation",
-                "step_generation",
-                "idea_refinement",
-                "history_tracking"
+                "node_graph_system",
+                "weighted_multi_modal_fusion",
+                "influence_calculation",
+                "idea_refinement"
             ]
         }
     )
 
 @app.get("/metrics", response_model=MetricsResponse)
 async def get_metrics():
-    """
-    Get API metrics including request counts, error rates, and latency percentiles.
-    
-    Returns:
-    - Total request count
-    - Total error count
-    - Overall error rate
-    - Latency percentiles (p50, p90, p95, p99, mean, min, max)
-    - Per-endpoint metrics with request counts, error rates, and latency
-    """
+    """Get API metrics including request counts, error rates, and latency percentiles."""
     metrics_collector = get_metrics_collector()
     metrics_data = metrics_collector.get_metrics()
     

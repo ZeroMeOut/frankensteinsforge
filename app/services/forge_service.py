@@ -99,7 +99,7 @@ class ForgeService:
             )
         
         # Build prompt
-        prompt = f"""Analyze these inputs and create an achievable idea. Start with 'create a' or 'make a':
+        prompt = f"""Analyze these inputs and create an achievable idea. Start with 'create a' or 'make a' and nothing else.:
 
 User text: {text}
 
@@ -195,13 +195,6 @@ Consider the image content and audio sentiment to generate a creative, actionabl
         prompt = f"""Given this idea: "{idea}"
 
 Generate a clear, actionable step-by-step implementation plan.
-
-Format your response as a well-structured numbered list with:
-- Main steps numbered (1, 2, 3, etc.)
-- Sub-steps with letters (a, b, c, etc.) if needed
-- Clear spacing between sections
-- Concise but actionable descriptions
-
 Keep each step clear and actionable."""
         
         try:

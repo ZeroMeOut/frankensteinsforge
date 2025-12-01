@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frankenstein's Forge - Node Graph</title>
+    <link rel="stylesheet" href="/static/style-nodes.css">
+</head>
+<body>
+    <canvas id="noiseCanvas"></canvas>
+    
+    <div class="app-container">
+        <!-- Left Panel - Graph Editor -->
+        <div class="graph-panel">
+            <header class="panel-header">
+                <h1>Frankenstein's Forge</h1>
+                <p class="subtitle">Node Graph Creator</p>
+            </header>
+
+            <!-- Node Controls -->
+            <div class="controls-bar">
+                <div class="node-count">
+                    <span id="nodeCount">0</span> / 10 Nodes
+                </div>
+                <div class="control-buttons">
+                    <button id="addTextNode" class="control-btn" title="Add Text Node">
+                        📝 Text
+                    </button>
+                    <button id="addImageNode" class="control-btn" title="Add Image Node">
+                        🖼️ Image
+                    </button>
+                    <button id="addAudioNode" class="control-btn" title="Add Audio Node">
+                        🎤 Audio
+                    </button>
+                    <button id="clearGraph" class="control-btn danger" title="Clear All">
+                        🗑️ Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- Graph Canvas -->
+            <div class="graph-container" id="graphContainer">
+                <canvas id="graphCanvas"></canvas>
+                <div id="nodesContainer" class="nodes-container"></div>
+            </div>
+
+            <!-- Mode Indicator -->
+            <div class="mode-indicator">
+                <span id="modeText">Click nodes to connect them</span>
+            </div>
+
+            <!-- Generate Button -->
+            <div class="generate-section">
+                <button id="generateBtn" class="generate-button" disabled>
+                    ⚡ Generate Idea from Graph
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Panel - Results -->
+        <div class="results-panel">
+            <div class="results-header">
+                <h2>Generated Ideas</h2>
+                <button id="clearResults" class="icon-btn" title="Clear Results">🗑️</button>
+            </div>
+
+            <div id="resultsContainer" class="results-container">
+                <div class="empty-state">
+                    <div class="empty-icon">💡</div>
+                    <p>Create nodes and connections, then generate ideas!</p>
+                    <div class="help-text">
+                        <h4>How to use:</h4>
+                        <ol>
+                            <li>Add nodes (Text, Image, or Audio)</li>
+                            <li>Click a node, then click another to connect them</li>
+                            <li>Set connection weights by clicking on connections</li>
+                            <li>Click "Generate Idea" to create!</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Node Editor Modal -->
+    <div id="nodeEditorModal" class="modal hidden">
+        <div class="modal-content">
+            <button class="modal-close" id="closeNodeEditor">&times;</button>
+            <h3 id="editorTitle">Edit Node</h3>
+            
+            <div id="editorContent">
+                <!-- Text Node Editor -->
+                <div id="textEditor" class="editor-section hidden">
+                    <label>Text Content:</label>
+                    <textarea id="textInput" rows="6" placeholder="Enter your text..."></textarea>
+                </div>
+
+                <!-- Image Node Editor -->
+                <div id="imageEditor" class="editor-section hidden">
+                    <label>Image File:</label>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="imageInput" accept="image/jpeg,image/png,image/jpg">
+                        <button type="button" class="file-button" onclick="document.getElementById('imageInput').click()">
+                            Choose Image
+                        </button>
+                        <span class="file-name" id="imageFileName">No file chosen</span>
+                    </div>
+                    <div id="imagePreviewContainer" class="preview-container hidden">
+                        <img id="imagePreview" alt="Preview">
+                    </div>
+                </div>
+
+                <!-- Audio Node Editor -->
+                <div id="audioEditor" class="editor-section hidden">
+                    <label>Audio Recording:</label>
+                    <div class="record-controls">
+                        <button type="button" class="record-button" id="recordButton">
+                            <span class="record-icon">🎤</span>
+                            <span id="recordText">Record</span>
+                        </button>
+                        <span class="record-timer" id="recordTimer"></span>
+                    </div>
+                    <canvas id="waveform" class="waveform hidden"></canvas>
+                    <div id="audioPlayback" class="audio-playback hidden">
+                        <audio id="audioPlayer" controls></audio>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button id="saveNode" class="action-button primary">Save</button>
+                <button id="cancelNode" class="action-button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connection Weight Modal -->
+    <div id="weightModal" class="modal hidden">
+        <div class="modal-content small">
+            <button class="modal-close" id="closeWeight">&times;</button>
+            <h3>Connection Weight</h3>
+            <div class="weight-editor">
+                <label>Weight (0.0 - 1.0):</label>
+                <input type="range" id="weightSlider" min="0" max="100" value="50" step="1">
+                <span id="weightValue">0.5</span>
+            </div>
+            <div class="modal-actions">
+                <button id="saveWeight" class="action-button primary">Save</button>
+                <button id="deleteConnection" class="action-button danger">Delete Connection</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p>Generating idea from your graph...</p>
+        </div>
+    </div>
+
+    <script src="/static/script-nodes.js"></script>
+</body>
+</html>

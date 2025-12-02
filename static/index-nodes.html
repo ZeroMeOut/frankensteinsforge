@@ -4,7 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frankenstein's Forge - Node Graph</title>
+    <link rel="icon" type="image/png" href="/static/icon/frankenstein-icon.png">
+    <link rel="apple-touch-icon" href="/static/icon/frankenstein-icon.png">
     <link rel="stylesheet" href="/static/style-nodes.css">
+    <!-- PDF.js for PDF parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Mammoth.js for DOCX parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
 <body>
     <!-- Mobile Blocker -->
@@ -23,8 +29,13 @@
         <!-- Left Panel - Graph Editor -->
         <div class="graph-panel">
             <header class="panel-header">
-                <h1>Frankenstein's Forge</h1>
-                <p class="subtitle">Node Graph Creator</p>
+                <div class="header-title">
+                    <img src="/static/icon/frankenstein-icon.png" alt="Frankenstein" class="header-icon">
+                    <div class="header-text">
+                        <h1>Frankenstein's Forge</h1>
+                        <p class="subtitle">Node Graph Creator</p>
+                    </div>
+                </div>
             </header>
 
             <!-- Node Controls -->
@@ -107,7 +118,18 @@
                 <!-- Text Node Editor -->
                 <div id="textEditor" class="editor-section hidden">
                     <label>Text Content:</label>
-                    <textarea id="textInput" rows="6" placeholder="Enter your text..."></textarea>
+                    <textarea id="textInput" rows="6" placeholder="Enter your text or upload a file..."></textarea>
+                    <div class="file-upload-option">
+                        <label>Or upload a file:</label>
+                        <div class="file-input-wrapper">
+                            <input type="file" id="textFileInput" accept=".txt,.pdf,.doc,.docx">
+                            <button type="button" class="file-button" onclick="document.getElementById('textFileInput').click()">
+                                📄 Choose File
+                            </button>
+                            <span class="file-name" id="textFileName">No file chosen</span>
+                        </div>
+                        <p class="file-hint">Supports .txt, .pdf, .doc, .docx (max 200 words)</p>
+                    </div>
                 </div>
 
                 <!-- Image Node Editor -->

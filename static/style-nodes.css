@@ -106,11 +106,31 @@ body {
     border-bottom: 1px solid #2a2a2a;
 }
 
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-icon {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.header-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
 .panel-header h1 {
     font-size: 1.3rem;
     font-weight: 600;
     color: #ffffff;
-    margin-bottom: 4px;
+    margin-bottom: 0;
 }
 
 .subtitle {
@@ -685,6 +705,20 @@ textarea:focus {
 
 textarea::placeholder {
     color: #555;
+}
+
+/* File upload option for text node */
+.file-upload-option {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #2a2a2a;
+}
+
+.file-hint {
+    font-size: 0.7rem;
+    color: #666;
+    margin-top: 6px;
+    font-style: italic;
 }
 
 .file-input-wrapper {

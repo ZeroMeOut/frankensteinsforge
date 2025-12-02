@@ -1,4 +1,92 @@
 // Node Graph System for Frankenstein's Forge
+
+// Utility function to truncate text to max words
+function truncateToWords(text, maxWords) {
+    if (!text) return '';
+    
+    const words = text.trim().split(/\s+/);
+    
+    if (words.length <= maxWords) {
+        return text.trim();
+    }
+    
+    const truncated = words.slice(0, maxWords).join(' ');
+    return truncated + '...';
+}
+
+// File parsing utilities
+async function parseTextFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target.result;
+            resolve(truncateToWords(text, 200));
+        };
+        reader.onerror = reject;
+        reader.readAsText(file);
+    });
+}
+
+async function parsePDFFile(file) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            
+            // Configure PDF.js
+            if (typeof pdfjsLib !== 'undefined') {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            }
+            
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+            
+            // Extract text from all pages
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                fullText += pageText + ' ';
+            }
+            
+            resolve(truncateToWords(fullText, 200));
+        } catch (error) {
+            reject(new Error('Failed to parse PDF: ' + error.message));
+        }
+    });
+}
+
+async function parseDOCXFile(file) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            
+            if (typeof mammoth === 'undefined') {
+                reject(new Error('Mammoth.js library not loaded'));
+                return;
+            }
+            
+            const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+            resolve(truncateToWords(result.value, 200));
+        } catch (error) {
+            reject(new Error('Failed to parse DOCX: ' + error.message));
+        }
+    });
+}
+
+async function parseUploadedFile(file) {
+    const fileName = file.name.toLowerCase();
+    
+    if (fileName.endsWith('.txt')) {
+        return await parseTextFile(file);
+    } else if (fileName.endsWith('.pdf')) {
+        return await parsePDFFile(file);
+    } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+        return await parseDOCXFile(file);
+    } else {
+        throw new Error('Unsupported file type. Please use .txt, .pdf, or .docx files.');
+    }
+}
+
 class NodeGraph {
     constructor() {
         this.nodes = [];
@@ -678,6 +766,8 @@ function openNodeEditor(node) {
     if (node.type === 'text') {
         document.getElementById('textEditor').classList.remove('hidden');
         document.getElementById('textInput').value = node.data?.text || '';
+        document.getElementById('textFileInput').value = '';
+        document.getElementById('textFileName').textContent = 'No file chosen';
         document.getElementById('textInput').focus();
     } else if (node.type === 'image') {
         document.getElementById('imageEditor').classList.remove('hidden');
@@ -714,6 +804,53 @@ function closeNodeEditor() {
         mediaRecorder.stop();
     }
 }
+
+// Text file upload handling
+document.addEventListener('DOMContentLoaded', function() {
+    const textFileInput = document.getElementById('textFileInput');
+    if (textFileInput) {
+        textFileInput.addEventListener('change', async function(e) {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                document.getElementById('textFileName').textContent = file.name;
+                
+                try {
+                    // Show loading indicator
+                    const textarea = document.getElementById('textInput');
+                    const originalPlaceholder = textarea.placeholder;
+                    textarea.placeholder = 'Parsing file...';
+                    textarea.disabled = true;
+                    
+                    // Parse file and truncate to 200 words
+                    const parsedText = await parseUploadedFile(file);
+                    
+                    // Update textarea
+                    textarea.value = parsedText;
+                    textarea.disabled = false;
+                    textarea.placeholder = originalPlaceholder;
+                    
+                    // Show word count info
+                    const wordCount = parsedText.split(/\s+/).filter(w => w).length;
+                    if (parsedText.endsWith('...')) {
+                        alert(`File parsed successfully! Truncated to ${wordCount} words (200 word limit).`);
+                    } else {
+                        alert(`File parsed successfully! ${wordCount} words.`);
+                    }
+                    
+                } catch (error) {
+                    alert('Error parsing file: ' + error.message);
+                    document.getElementById('textFileName').textContent = 'No file chosen';
+                    e.target.value = '';
+                    
+                    // Reset textarea
+                    const textarea = document.getElementById('textInput');
+                    textarea.disabled = false;
+                    textarea.placeholder = 'Enter your text or upload a file...';
+                }
+            }
+        });
+    }
+});
 
 // Image handling
 document.getElementById('imageInput').addEventListener('change', function(e) {
@@ -801,7 +938,7 @@ document.getElementById('saveNode').addEventListener('click', () => {
     if (currentEditingNode.type === 'text') {
         const text = document.getElementById('textInput').value.trim();
         if (!text) {
-            alert('Please enter some text');
+            alert('Please enter some text or upload a file');
             return;
         }
         data = { text };
@@ -1110,13 +1247,6 @@ function turnIdeaIntoNode(button, ideaText) {
             button.style.background = '';
             button.style.color = '';
         }, 2000);
-        
-        // Optionally collapse results panel to show the new node
-        // (Uncomment if you want this behavior)
-        // const panel = document.querySelector('.results-panel');
-        // if (!panel.classList.contains('collapsed')) {
-        //     toggleResultsPanel();
-        // }
     }
 }
 

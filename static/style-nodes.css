@@ -29,6 +29,7 @@ body {
     z-index: 1;
     display: flex;
     height: 100vh;
+    overflow: hidden;
 }
 
 .graph-panel {
@@ -37,6 +38,9 @@ body {
     flex-direction: column;
     border-right: 1px solid #2a2a2a;
     background: rgba(15, 15, 15, 0.95);
+    transition: all 0.3s ease;
+    position: relative;
+    min-width: 0; /* Important for flex child to shrink */
 }
 
 .results-panel {
@@ -44,39 +48,89 @@ body {
     display: flex;
     flex-direction: column;
     background: rgba(10, 10, 10, 0.95);
+    transition: transform 0.3s ease, width 0.3s ease;
+    position: relative;
+    flex-shrink: 0; /* Don't shrink in flex layout */
+}
+
+.results-panel.collapsed {
+    transform: translateX(100%);
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 400px; /* Maintain width but position absolute */
+    z-index: 100;
+}
+
+/* Toggle Button */
+.results-toggle {
+    position: absolute;
+    left: -40px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 40px;
+    height: 80px;
+    background: rgba(10, 10, 10, 0.95);
+    border: 1px solid #2a2a2a;
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.5rem;
+    transition: all 0.2s ease;
+    z-index: 102;
+    color: #4ade80;
+    user-select: none;
+}
+
+.results-toggle:hover {
+    background: rgba(20, 20, 20, 0.95);
+    left: -42px;
+    color: #22c55e;
+}
+
+.results-toggle:active {
+    transform: translateY(-50%) scale(0.95);
+}
+
+.results-panel.collapsed .results-toggle {
+    left: -40px;
 }
 
 /* Header */
 .panel-header {
-    padding: 20px 24px;
+    padding: 16px 20px;
     border-bottom: 1px solid #2a2a2a;
 }
 
 .panel-header h1 {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
     font-weight: 600;
     color: #ffffff;
     margin-bottom: 4px;
 }
 
 .subtitle {
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     color: #888;
 }
 
 /* Controls Bar */
 .controls-bar {
-    padding: 16px 24px;
+    padding: 12px 20px;
     border-bottom: 1px solid #2a2a2a;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     flex-wrap: wrap;
 }
 
 .node-count {
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     color: #888;
     font-weight: 500;
 }
@@ -88,17 +142,17 @@ body {
 
 .control-buttons {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: wrap;
 }
 
 .control-btn {
-    padding: 8px 16px;
+    padding: 6px 12px;
     background: #222;
     color: #e0e0e0;
     border: 1px solid #3a3a3a;
     border-radius: 6px;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s ease;
     font-family: inherit;
@@ -138,6 +192,17 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
+    z-index: 2;
+}
+
+#graphNoiseCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    opacity: 0.3;
 }
 
 .nodes-container {
@@ -147,20 +212,23 @@ body {
     width: 100%;
     height: 100%;
     pointer-events: none;
+    z-index: 3;
 }
 
-/* Node Styles */
+/* Node Styles - Made Much Smaller */
 .node {
     position: absolute;
     background: #1a1a1a;
     border: 2px solid #3a3a3a;
-    border-radius: 12px;
-    padding: 12px 16px;
+    border-radius: 8px;
+    padding: 6px 8px;
     cursor: pointer;
     pointer-events: all;
     transition: all 0.2s ease;
-    min-width: 120px;
+    min-width: 70px;
+    max-width: 140px;
     user-select: none;
+    font-size: 0.75rem;
 }
 
 .node:hover {
@@ -183,11 +251,11 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 
 .node-type {
-    font-size: 0.75rem;
+    font-size: 0.6rem;
     color: #888;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -196,7 +264,7 @@ body {
 
 .node-actions {
     display: flex;
-    gap: 4px;
+    gap: 2px;
 }
 
 .node-btn {
@@ -204,8 +272,8 @@ body {
     border: none;
     color: #666;
     cursor: pointer;
-    font-size: 0.875rem;
-    padding: 2px 4px;
+    font-size: 0.7rem;
+    padding: 1px 3px;
     transition: color 0.2s ease;
 }
 
@@ -218,21 +286,21 @@ body {
 }
 
 .node-content {
-    font-size: 0.875rem;
+    font-size: 0.7rem;
     color: #d0d0d0;
-    line-height: 1.4;
-    max-width: 200px;
+    line-height: 1.2;
+    max-width: 120px;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
 }
 
 .node-icon {
-    font-size: 1.25rem;
-    margin-bottom: 4px;
+    font-size: 0.9rem;
+    margin-bottom: 3px;
 }
 
 .node.text-node {
@@ -264,35 +332,35 @@ body {
 
 .node-image-preview {
     width: 100%;
-    height: 80px;
+    height: 45px;
     object-fit: cover;
-    border-radius: 6px;
-    margin-top: 8px;
+    border-radius: 4px;
+    margin-top: 4px;
 }
 
 /* Mode Indicator */
 .mode-indicator {
-    padding: 12px 24px;
+    padding: 10px 20px;
     border-top: 1px solid #2a2a2a;
     background: #0a0a0a;
     text-align: center;
 }
 
 .mode-indicator span {
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     color: #888;
 }
 
 /* Generate Section */
 .generate-section {
-    padding: 16px 24px;
+    padding: 12px 20px;
     border-top: 1px solid #2a2a2a;
 }
 
 .generate-button {
     width: 100%;
-    padding: 14px;
-    font-size: 0.95rem;
+    padding: 12px;
+    font-size: 0.9rem;
     font-weight: 600;
     background: #4ade80;
     color: #0a0a0a;
@@ -321,7 +389,7 @@ body {
 
 /* Results Panel */
 .results-header {
-    padding: 20px 24px;
+    padding: 16px 20px;
     border-bottom: 1px solid #2a2a2a;
     display: flex;
     justify-content: space-between;
@@ -329,7 +397,7 @@ body {
 }
 
 .results-header h2 {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 600;
     color: #ffffff;
 }
@@ -351,31 +419,31 @@ body {
 .results-container {
     flex: 1;
     overflow-y: auto;
-    padding: 24px;
+    padding: 20px;
 }
 
 .empty-state {
     text-align: center;
-    padding: 60px 20px;
+    padding: 40px 20px;
     color: #666;
 }
 
 .empty-icon {
-    font-size: 4rem;
-    margin-bottom: 16px;
+    font-size: 3rem;
+    margin-bottom: 12px;
     opacity: 0.5;
 }
 
 .empty-state p {
-    font-size: 1rem;
-    margin-bottom: 24px;
+    font-size: 0.9rem;
+    margin-bottom: 20px;
 }
 
 .help-text {
     text-align: left;
-    max-width: 300px;
+    max-width: 280px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 16px;
     background: #151515;
     border: 1px solid #2a2a2a;
     border-radius: 8px;
@@ -383,18 +451,18 @@ body {
 
 .help-text h4 {
     color: #e0e0e0;
-    margin-bottom: 12px;
-    font-size: 0.95rem;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
 }
 
 .help-text ol {
-    padding-left: 20px;
+    padding-left: 18px;
 }
 
 .help-text li {
-    margin-bottom: 8px;
-    font-size: 0.875rem;
-    line-height: 1.5;
+    margin-bottom: 6px;
+    font-size: 0.8rem;
+    line-height: 1.4;
 }
 
 /* Result Card */
@@ -402,7 +470,7 @@ body {
     background: #151515;
     border: 1px solid #2a2a2a;
     border-radius: 12px;
-    padding: 20px;
+    padding: 16px;
     margin-bottom: 16px;
     animation: slideIn 0.3s ease;
 }
@@ -422,19 +490,19 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: start;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .result-timestamp {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: #666;
 }
 
 .result-content {
-    font-size: 0.95rem;
-    line-height: 1.7;
+    font-size: 0.85rem;
+    line-height: 1.6;
     color: #d0d0d0;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     white-space: pre-wrap;
 }
 
@@ -450,12 +518,12 @@ body {
 }
 
 .result-btn {
-    padding: 8px 12px;
+    padding: 6px 10px;
     background: #222;
     color: #e0e0e0;
     border: 1px solid #3a3a3a;
     border-radius: 6px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     cursor: pointer;
     transition: all 0.2s ease;
     font-family: inherit;
@@ -477,27 +545,27 @@ body {
 }
 
 .result-steps {
-    margin-top: 16px;
-    padding-top: 16px;
+    margin-top: 12px;
+    padding-top: 12px;
     border-top: 1px solid #2a2a2a;
 }
 
 .result-steps h4 {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: #e0e0e0;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .steps-content {
-    font-size: 0.875rem;
-    line-height: 1.7;
+    font-size: 0.8rem;
+    line-height: 1.6;
     color: #b0b0b0;
     white-space: pre-wrap;
 }
 
 .steps-loading {
     text-align: center;
-    padding: 20px;
+    padding: 16px;
     color: #666;
 }
 
@@ -530,8 +598,8 @@ body {
     background: #151515;
     border: 1px solid #2a2a2a;
     border-radius: 12px;
-    padding: 32px;
-    max-width: 500px;
+    padding: 20px;
+    max-width: 400px;
     width: 100%;
     max-height: 80vh;
     overflow-y: auto;
@@ -540,7 +608,7 @@ body {
 }
 
 .modal-content.small {
-    max-width: 350px;
+    max-width: 300px;
 }
 
 @keyframes modalSlide {
@@ -556,12 +624,12 @@ body {
 
 .modal-close {
     position: absolute;
-    top: 16px;
-    right: 16px;
+    top: 12px;
+    right: 12px;
     background: transparent;
     border: none;
     color: #888;
-    font-size: 2rem;
+    font-size: 1.8rem;
     cursor: pointer;
     line-height: 1;
     padding: 0;
@@ -578,33 +646,33 @@ body {
 }
 
 .modal-content h3 {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 600;
     color: #ffffff;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .editor-section {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .editor-section label {
     display: block;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     font-weight: 500;
     color: #b0b0b0;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 textarea {
     width: 100%;
-    padding: 12px;
+    padding: 10px;
     background: #0a0a0a;
     border: 1px solid #2a2a2a;
     border-radius: 6px;
     color: #e0e0e0;
     font-family: inherit;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     resize: vertical;
     transition: all 0.2s ease;
 }
@@ -622,7 +690,7 @@ textarea::placeholder {
 .file-input-wrapper {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
 }
 
@@ -631,12 +699,12 @@ input[type="file"] {
 }
 
 .file-button {
-    padding: 10px 20px;
+    padding: 8px 16px;
     background: #222;
     color: #e0e0e0;
     border: 1px solid #3a3a3a;
     border-radius: 6px;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s ease;
     font-family: inherit;
@@ -648,13 +716,13 @@ input[type="file"] {
 }
 
 .file-name {
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     color: #666;
     flex: 1;
 }
 
 .preview-container {
-    margin-top: 12px;
+    margin-top: 10px;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid #2a2a2a;
@@ -671,16 +739,16 @@ input[type="file"] {
 .record-controls {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .record-button {
-    padding: 10px 20px;
+    padding: 8px 16px;
     background: #222;
     color: #e0e0e0;
     border: 1px solid #3a3a3a;
     border-radius: 6px;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s ease;
     font-family: inherit;
@@ -706,11 +774,11 @@ input[type="file"] {
 }
 
 .record-icon {
-    font-size: 1rem;
+    font-size: 0.9rem;
 }
 
 .record-timer {
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     color: #888;
 }
 
@@ -722,14 +790,14 @@ input[type="file"] {
 .waveform {
     width: 100%;
     height: 60px;
-    margin-top: 12px;
+    margin-top: 10px;
     border-radius: 6px;
     border: 1px solid #2a2a2a;
     background: #0a0a0a;
 }
 
 .audio-playback {
-    margin-top: 12px;
+    margin-top: 10px;
 }
 
 .audio-playback audio {
@@ -738,15 +806,15 @@ input[type="file"] {
 }
 
 .weight-editor {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .weight-editor label {
     display: block;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     font-weight: 500;
     color: #b0b0b0;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .weight-editor input[type="range"] {
@@ -779,24 +847,24 @@ input[type="file"] {
 #weightValue {
     display: block;
     text-align: center;
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 600;
     color: #4ade80;
 }
 
 .modal-actions {
     display: flex;
-    gap: 12px;
+    gap: 10px;
 }
 
 .action-button {
     flex: 1;
-    padding: 12px;
+    padding: 10px;
     background: #222;
     color: #e0e0e0;
     border: 1px solid #3a3a3a;
     border-radius: 6px;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     cursor: pointer;
     transition: all 0.2s ease;
     font-family: inherit;
@@ -861,7 +929,7 @@ input[type="file"] {
 }
 
 .loading-content p {
-    font-size: 1rem;
+    font-size: 0.9rem;
     color: #888;
 }
 
@@ -887,39 +955,52 @@ input[type="file"] {
     background: #3a3a3a;
 }
 
-/* Responsive Design */
-@media (max-width: 1024px) {
-    .results-panel {
-        width: 350px;
-    }
+/* Mobile Blocker - Show warning on mobile/tablet devices */
+.mobile-blocker {
+    display: none;
 }
 
-@media (max-width: 768px) {
-    .app-container {
-        flex-direction: column;
+@media (max-width: 1024px) {
+    .mobile-blocker {
+        display: flex;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #000000;
+        z-index: 999999;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
     }
     
-    .graph-panel {
-        height: 60vh;
-        border-right: none;
-        border-bottom: 1px solid #2a2a2a;
+    .mobile-blocker-content {
+        text-align: center;
+        color: #e0e0e0;
+        max-width: 500px;
     }
     
-    .results-panel {
-        width: 100%;
-        height: 40vh;
+    .mobile-blocker-icon {
+        font-size: 4rem;
+        margin-bottom: 20px;
     }
     
-    .controls-bar {
-        flex-direction: column;
-        align-items: stretch;
+    .mobile-blocker h2 {
+        font-size: 1.5rem;
+        margin-bottom: 16px;
+        color: #4ade80;
     }
     
-    .control-buttons {
-        width: 100%;
+    .mobile-blocker p {
+        font-size: 1rem;
+        line-height: 1.6;
+        color: #b0b0b0;
     }
     
-    .control-btn {
-        flex: 1;
+    /* Hide main content on mobile */
+    .app-container,
+    #noiseCanvas {
+        display: none !important;
     }
 }

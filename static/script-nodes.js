@@ -8,7 +8,7 @@ class NodeGraph {
         this.dragOffset = { x: 0, y: 0 };
         this.connectionMode = false;
         this.sourceNode = null;
-        this.maxNodes = 10;
+        this.maxNodes = 20;
         
         // Canvas for drawing connections
         this.canvas = document.getElementById('graphCanvas');
@@ -20,16 +20,46 @@ class NodeGraph {
         
         // Initialize canvas size
         this.resizeCanvas();
+        
+        // Window resize handler
         window.addEventListener('resize', () => this.resizeCanvas());
+        
+        // ResizeObserver to detect container size changes (e.g., panel collapse/expand)
+        if (typeof ResizeObserver !== 'undefined') {
+            this.resizeObserver = new ResizeObserver(entries => {
+                for (let entry of entries) {
+                    if (entry.target === this.container) {
+                        console.log('Container resized by ResizeObserver');
+                        this.resizeCanvas();
+                    }
+                }
+            });
+            this.resizeObserver.observe(this.container);
+        }
         
         // Node counter
         this.updateNodeCount();
     }
     
     resizeCanvas() {
-        this.canvas.width = this.container.clientWidth;
-        this.canvas.height = this.container.clientHeight;
-        this.drawConnections();
+        const newWidth = this.container.clientWidth;
+        const newHeight = this.container.clientHeight;
+        
+        // Only resize if dimensions actually changed
+        if (this.canvas.width !== newWidth || this.canvas.height !== newHeight) {
+            console.log('Canvas resize:', { 
+                oldWidth: this.canvas.width, 
+                newWidth, 
+                oldHeight: this.canvas.height, 
+                newHeight 
+            });
+            
+            this.canvas.width = newWidth;
+            this.canvas.height = newHeight;
+            
+            // Redraw connections after resize settles
+            setTimeout(() => this.drawConnections(), 50);
+        }
     }
     
     createNode(type, x = null, y = null) {
@@ -40,10 +70,10 @@ class NodeGraph {
         
         const id = Date.now() + Math.random();
         
-        // Default position (random in center area)
+        // Default position (random in center area) - adjusted for much smaller nodes
         if (x === null || y === null) {
-            x = Math.random() * (this.canvas.width - 200) + 100;
-            y = Math.random() * (this.canvas.height - 200) + 100;
+            x = Math.random() * (this.canvas.width - 100) + 50;
+            y = Math.random() * (this.canvas.height - 100) + 50;
         }
         
         const node = {
@@ -136,8 +166,9 @@ class NodeGraph {
             const x = e.clientX - containerRect.left - this.dragOffset.x;
             const y = e.clientY - containerRect.top - this.dragOffset.y;
             
-            this.draggedNode.x = Math.max(0, Math.min(x, this.canvas.width - 150));
-            this.draggedNode.y = Math.max(0, Math.min(y, this.canvas.height - 100));
+            // Adjusted bounds for much smaller nodes (70px width, 60px height)
+            this.draggedNode.x = Math.max(0, Math.min(x, this.canvas.width - 70));
+            this.draggedNode.y = Math.max(0, Math.min(y, this.canvas.height - 60));
             
             this.draggedNode.element.style.left = this.draggedNode.x + 'px';
             this.draggedNode.element.style.top = this.draggedNode.y + 'px';
@@ -232,7 +263,7 @@ class NodeGraph {
         const contentEl = node.element.querySelector('.node-content');
         
         if (node.type === 'text') {
-            contentEl.textContent = data.text.substring(0, 100) + (data.text.length > 100 ? '...' : '');
+            contentEl.textContent = data.text.substring(0, 60) + (data.text.length > 60 ? '...' : '');
         } else if (node.type === 'image') {
             if (data.preview) {
                 contentEl.innerHTML = `<img src="${data.preview}" class="node-image-preview" alt="Image">`;
@@ -245,6 +276,9 @@ class NodeGraph {
         }
         
         this.updateGenerateButton();
+        
+        // Redraw connections to ensure they're properly positioned
+        setTimeout(() => this.drawConnections(), 50);
     }
     
     createConnection(sourceId, targetId) {
@@ -267,7 +301,9 @@ class NodeGraph {
         };
         
         this.connections.push(connection);
-        this.drawConnections();
+        
+        // Wait for DOM to settle before drawing
+        setTimeout(() => this.drawConnections(), 50);
         this.updateGenerateButton();
     }
     
@@ -280,11 +316,29 @@ class NodeGraph {
             
             if (!sourceNode || !targetNode) return;
             
-            // Calculate center points of nodes
-            const sourceX = sourceNode.x + 75; // Half of node width
-            const sourceY = sourceNode.y + 50; // Half of node height
-            const targetX = targetNode.x + 75;
-            const targetY = targetNode.y + 50;
+            // Get actual dimensions from the DOM elements
+            const sourceEl = sourceNode.element;
+            const targetEl = targetNode.element;
+            
+            // Use offsetWidth/offsetHeight which gives the actual rendered size
+            const sourceWidth = sourceEl.offsetWidth || 70;
+            const sourceHeight = sourceEl.offsetHeight || 60;
+            const targetWidth = targetEl.offsetWidth || 70;
+            const targetHeight = targetEl.offsetHeight || 60;
+            
+            // Calculate center points relative to node position
+            const sourceX = sourceNode.x + (sourceWidth / 2);
+            const sourceY = sourceNode.y + (sourceHeight / 2);
+            const targetX = targetNode.x + (targetWidth / 2);
+            const targetY = targetNode.y + (targetHeight / 2);
+            
+            // Debug log for first connection
+            if (this.connections.indexOf(conn) === 0 && this._debugConnections) {
+                console.log('Drawing connection:', {
+                    source: { x: sourceNode.x, y: sourceNode.y, width: sourceWidth, height: sourceHeight, centerX: sourceX, centerY: sourceY },
+                    target: { x: targetNode.x, y: targetNode.y, width: targetWidth, height: targetHeight, centerX: targetX, centerY: targetY }
+                });
+            }
             
             // Draw line
             this.ctx.strokeStyle = `rgba(74, 222, 128, ${conn.weight})`;
@@ -312,6 +366,62 @@ class NodeGraph {
         });
     }
     
+    // Debug helper - call from console: graph.enableConnectionDebug()
+    enableConnectionDebug() {
+        this._debugConnections = true;
+        console.log('Connection debugging enabled');
+        this.drawConnections();
+    }
+    
+    // Force refresh connections - call from console if needed: graph.refreshConnections()
+    refreshConnections() {
+        console.log('Force refreshing connections...');
+        this.resizeCanvas();
+        setTimeout(() => {
+            this.drawConnections();
+            console.log('Connections refreshed!');
+        }, 100);
+    }
+    
+    // Create a text node from idea text
+    createNodeFromIdea(ideaText) {
+        if (this.nodes.length >= this.maxNodes) {
+            alert(`Maximum ${this.maxNodes} nodes allowed`);
+            return null;
+        }
+        
+        // Position in center of canvas with slight randomness
+        const centerX = this.canvas.width / 2 - 100;
+        const centerY = this.canvas.height / 2 - 50;
+        const randomX = centerX + (Math.random() - 0.5) * 200;
+        const randomY = centerY + (Math.random() - 0.5) * 200;
+        
+        // Create the node
+        const node = this.createNode('text', randomX, randomY);
+        
+        if (node) {
+            // Set the idea text as node data
+            node.data = { text: ideaText };
+            
+            // Update the node's visual content
+            const contentEl = node.element.querySelector('.node-content');
+            const displayText = ideaText.substring(0, 100) + (ideaText.length > 100 ? '...' : '');
+            contentEl.textContent = displayText;
+            
+            // Update generate button state
+            this.updateGenerateButton();
+            
+            // Give visual feedback
+            node.element.style.animation = 'slideIn 0.3s ease';
+            
+            console.log('Created node from idea:', ideaText.substring(0, 50) + '...');
+            
+            return node;
+        }
+        
+        return null;
+    }
+    
     getConnectionAtPoint(x, y) {
         for (let conn of this.connections) {
             const sourceNode = this.nodes.find(n => n.id === conn.source);
@@ -319,10 +429,16 @@ class NodeGraph {
             
             if (!sourceNode || !targetNode) continue;
             
-            const sourceX = sourceNode.x + 75;
-            const sourceY = sourceNode.y + 50;
-            const targetX = targetNode.x + 75;
-            const targetY = targetNode.y + 50;
+            // Use offsetWidth/offsetHeight for actual dimensions
+            const sourceWidth = sourceNode.element.offsetWidth || 70;
+            const sourceHeight = sourceNode.element.offsetHeight || 60;
+            const targetWidth = targetNode.element.offsetWidth || 70;
+            const targetHeight = targetNode.element.offsetHeight || 60;
+            
+            const sourceX = sourceNode.x + (sourceWidth / 2);
+            const sourceY = sourceNode.y + (sourceHeight / 2);
+            const targetX = targetNode.x + (targetWidth / 2);
+            const targetY = targetNode.y + (targetHeight / 2);
             
             const midX = (sourceX + targetX) / 2;
             const midY = (sourceY + targetY) / 2;
@@ -412,8 +528,71 @@ class NodeGraph {
 // Global graph instance
 const graph = new NodeGraph();
 
+// Results Panel Toggle
+function toggleResultsPanel(e) {
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    console.log('Toggle clicked');
+    const panel = document.querySelector('.results-panel');
+    const toggle = document.querySelector('.results-toggle');
+    
+    if (!panel || !toggle) {
+        console.error('Panel or toggle not found');
+        return;
+    }
+    
+    panel.classList.toggle('collapsed');
+    
+    // Update toggle icon
+    if (panel.classList.contains('collapsed')) {
+        toggle.textContent = '◀';
+        console.log('Panel collapsed');
+    } else {
+        toggle.textContent = '▶';
+        console.log('Panel expanded');
+    }
+    
+    // CRITICAL: Resize canvas and redraw connections after panel animation completes
+    setTimeout(() => {
+        if (graph) {
+            console.log('Resizing canvas after panel toggle');
+            graph.resizeCanvas();
+            // Extra delay to ensure DOM has settled
+            setTimeout(() => {
+                graph.drawConnections();
+                console.log('Connections redrawn');
+            }, 50);
+        }
+    }, 350); // Match the CSS transition duration (0.3s + buffer)
+}
+
 // Initialize UI
 document.addEventListener('DOMContentLoaded', function() {
+    // Add toggle button to results panel FIRST
+    const resultsPanel = document.querySelector('.results-panel');
+    if (resultsPanel && !document.querySelector('.results-toggle')) {
+        const toggleButton = document.createElement('div');
+        toggleButton.className = 'results-toggle';
+        toggleButton.textContent = '▶';
+        
+        // Add both click and touch event handlers
+        toggleButton.onclick = toggleResultsPanel;
+        toggleButton.ontouchstart = function(e) {
+            e.preventDefault();
+            toggleResultsPanel(e);
+        };
+        
+        toggleButton.setAttribute('title', 'Toggle results panel');
+        toggleButton.style.cursor = 'pointer';
+        toggleButton.style.touchAction = 'manipulation'; // Prevent double-tap zoom
+        
+        resultsPanel.appendChild(toggleButton);
+        console.log('Toggle button added with touch support');
+    }
+    
     // Add node buttons
     document.getElementById('addTextNode').addEventListener('click', () => {
         const node = graph.createNode('text');
@@ -451,25 +630,28 @@ document.addEventListener('DOMContentLoaded', function() {
         await generateFromGraph();
     });
     
-    // Clear results
-    document.getElementById('clearResults').addEventListener('click', () => {
-        const container = document.getElementById('resultsContainer');
-        container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-icon">💡</div>
-                <p>Create nodes and connections, then generate ideas!</p>
-                <div class="help-text">
-                    <h4>How to use:</h4>
-                    <ol>
-                        <li>Add nodes (Text, Image, or Audio)</li>
-                        <li>Click a node, then click another to connect them</li>
-                        <li>Set connection weights by clicking on connections</li>
-                        <li>Click "Generate Idea" to create!</li>
-                    </ol>
+    // Clear results button (if exists)
+    const clearResultsBtn = document.getElementById('clearResults');
+    if (clearResultsBtn) {
+        clearResultsBtn.addEventListener('click', () => {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">💡</div>
+                    <p>Create nodes and connections, then generate ideas!</p>
+                    <div class="help-text">
+                        <h4>How to use:</h4>
+                        <ol>
+                            <li>Add nodes (Text, Image, or Audio)</li>
+                            <li>Click a node, then click another to connect them</li>
+                            <li>Set connection weights by clicking on connections</li>
+                            <li>Click "Generate Idea" to create!</li>
+                        </ol>
+                    </div>
                 </div>
-            </div>
-        `;
-    });
+            `;
+        });
+    }
 });
 
 // Node Editor Modal
@@ -792,6 +974,12 @@ async function generateFromGraph() {
         
         if (response.ok && data.success) {
             displayResult(data.idea);
+            
+            // Auto-expand results panel if collapsed
+            const panel = document.querySelector('.results-panel');
+            if (panel.classList.contains('collapsed')) {
+                toggleResultsPanel();
+            }
         } else {
             throw new Error(data.error || 'Failed to generate idea');
         }
@@ -883,6 +1071,9 @@ function displayResult(idea) {
         </div>
         <div class="result-content">${formattedIdea}</div>
         <div class="result-actions">
+            <button class="result-btn primary" onclick="turnIdeaIntoNode(this, \`${idea.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)">
+                ➕ Turn into Node
+            </button>
             <button class="result-btn" onclick="copyResult(this)">📋 Copy</button>
         </div>
         <div class="result-steps hidden"></div>
@@ -900,6 +1091,33 @@ function copyResult(button) {
     setTimeout(() => {
         button.textContent = originalText;
     }, 2000);
+}
+
+function turnIdeaIntoNode(button, ideaText) {
+    // Create a text node from the idea
+    const node = graph.createNodeFromIdea(ideaText);
+    
+    if (node) {
+        // Give visual feedback
+        const originalText = button.textContent;
+        button.textContent = '✓ Node Created!';
+        button.style.background = '#4ade80';
+        button.style.color = '#0a0a0a';
+        
+        // Reset button after 2 seconds
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.style.background = '';
+            button.style.color = '';
+        }, 2000);
+        
+        // Optionally collapse results panel to show the new node
+        // (Uncomment if you want this behavior)
+        // const panel = document.querySelector('.results-panel');
+        // if (!panel.classList.contains('collapsed')) {
+        //     toggleResultsPanel();
+        // }
+    }
 }
 
 async function generateSteps(button, idea) {
@@ -936,7 +1154,7 @@ async function generateSteps(button, idea) {
     }
 }
 
-// Background noise animation (same as before)
+// Background noise animation
 (function() {
     const canvas = document.getElementById('noiseCanvas');
     const ctx = canvas.getContext('2d');
@@ -989,4 +1207,81 @@ async function generateSteps(button, idea) {
     }
     
     drawNoise();
+})();
+
+// Graph area noise animation
+(function() {
+    const canvas = document.getElementById('graphNoiseCanvas');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    let time = 0.5; // Offset time for variation
+    
+    function resizeCanvas() {
+        const container = document.getElementById('graphContainer');
+        if (!container) return;
+        
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+    }
+    
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    
+    // Resize when graph panel changes size (for panel collapse/expand)
+    const graphContainer = document.getElementById('graphContainer');
+    if (graphContainer && typeof ResizeObserver !== 'undefined') {
+        const resizeObserver = new ResizeObserver(() => {
+            resizeCanvas();
+        });
+        resizeObserver.observe(graphContainer);
+    }
+    
+    function noise(x, y, t) {
+        const n = Math.sin(x * 0.01 + t) * Math.cos(y * 0.01 + t) * 0.5 + 0.5;
+        return n;
+    }
+    
+    function drawNoise() {
+        if (canvas.width === 0 || canvas.height === 0) {
+            requestAnimationFrame(drawNoise);
+            return;
+        }
+        
+        const imageData = ctx.createImageData(canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        const scale = 3;
+        
+        for (let y = 0; y < canvas.height; y += scale) {
+            for (let x = 0; x < canvas.width; x += scale) {
+                const value = noise(x, y, time);
+                
+                const green = Math.floor(value * 60 + 10);
+                const red = Math.floor(value * 20);
+                const blue = Math.floor(value * 20);
+                
+                for (let dy = 0; dy < scale && y + dy < canvas.height; dy++) {
+                    for (let dx = 0; dx < scale && x + dx < canvas.width; dx++) {
+                        const index = ((y + dy) * canvas.width + (x + dx)) * 4;
+                        data[index] = red;
+                        data[index + 1] = green;
+                        data[index + 2] = blue;
+                        data[index + 3] = 255;
+                    }
+                }
+            }
+        }
+        
+        ctx.putImageData(imageData, 0, 0);
+        
+        time += 0.005;
+        requestAnimationFrame(drawNoise);
+    }
+    
+    // Start animation after a short delay to ensure canvas is sized
+    setTimeout(() => {
+        resizeCanvas();
+        drawNoise();
+    }, 100);
 })();

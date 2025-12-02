@@ -7,6 +7,16 @@
     <link rel="stylesheet" href="/static/style-nodes.css">
 </head>
 <body>
+    <!-- Mobile Blocker -->
+    <div class="mobile-blocker">
+        <div class="mobile-blocker-content">
+            <div class="mobile-blocker-icon">🖥️</div>
+            <h2>Desktop Only</h2>
+            <p>This application is designed for desktop use only.</p>
+            <p>Please access from a computer with a larger screen for the best experience.</p>
+        </div>
+    </div>
+    
     <canvas id="noiseCanvas"></canvas>
     
     <div class="app-container">
@@ -20,7 +30,7 @@
             <!-- Node Controls -->
             <div class="controls-bar">
                 <div class="node-count">
-                    <span id="nodeCount">0</span> / 10 Nodes
+                    <span id="nodeCount">0</span> / 20 Nodes
                 </div>
                 <div class="control-buttons">
                     <button id="addTextNode" class="control-btn" title="Add Text Node">
@@ -40,6 +50,7 @@
 
             <!-- Graph Canvas -->
             <div class="graph-container" id="graphContainer">
+                <canvas id="graphNoiseCanvas"></canvas>
                 <canvas id="graphCanvas"></canvas>
                 <div id="nodesContainer" class="nodes-container"></div>
             </div>
@@ -59,9 +70,13 @@
 
         <!-- Right Panel - Results -->
         <div class="results-panel">
+            <!-- Toggle Button -->
+            <button class="results-toggle" onclick="toggleResultsPanel(event)" ontouchstart="toggleResultsPanel(event)">
+                ▶
+            </button>
+            
             <div class="results-header">
                 <h2>Generated Ideas 💡</h2>
-                <!-- <button id="clearResults" class="icon-btn" title="Clear Results">🗑️</button> -->
             </div>
 
             <div id="resultsContainer" class="results-container">

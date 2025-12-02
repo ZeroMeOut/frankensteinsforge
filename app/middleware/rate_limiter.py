@@ -2,26 +2,8 @@
 Rate limiting middleware for Frankenstein's Forge API.
 
 This module implements sliding window rate limiting to prevent API abuse
-and ensure fair resource allocation across clients.
-
-Usage:
-    To add rate limiting to your FastAPI application:
-    
-    ```python
-    from app.middleware.rate_limiter import RateLimiter
-    from app.core.dependencies import get_config, get_logger
-    
-    # In your app startup:
-    config = get_config()
-    logger = get_logger()
-    
-    # Add the middleware
-    app.add_middleware(RateLimiter, config=config, logger=logger)
-    ```
-    
-    The rate limiter will automatically track requests per IP address
-    (or per user if authentication is implemented) and enforce the
-    configured rate limits.
+and ensure fair resource allocation across clients. Memory optimized with
+periodic cleanup of old entries.
 """
 import time
 from typing import Dict, List, Optional, Tuple
@@ -38,8 +20,12 @@ class RateLimiter(BaseHTTPMiddleware):
     Rate limiting middleware using sliding window algorithm.
     
     Tracks requests per IP address and per user (if authenticated),
-    enforcing configurable rate limits with automatic window resets.
+    enforcing configurable rate limits with automatic window resets
+    and periodic cleanup to prevent memory leaks.
     """
+    
+    # Cleanup interval (5 minutes)
+    CLEANUP_INTERVAL_SECONDS = 300
     
     def __init__(self, app, config: Config, logger: StructuredLogger):
         """
@@ -61,6 +47,9 @@ class RateLimiter(BaseHTTPMiddleware):
         # Rate limit configuration
         self.max_requests = config.rate_limit_requests
         self.window_seconds = config.rate_limit_period
+        
+        # Cleanup tracking
+        self._last_global_cleanup = time.time()
         
         self.logger.info(
             "Rate limiter initialized",
@@ -116,6 +105,41 @@ class RateLimiter(BaseHTTPMiddleware):
         # Clean up empty entries to prevent memory leaks
         if not self._request_store[identifier]:
             del self._request_store[identifier]
+    
+    def _global_cleanup(self, current_time: float) -> None:
+        """
+        Perform global cleanup of all identifiers.
+        
+        Removes old timestamps and empty entries across all clients
+        to prevent memory leaks.
+        
+        Args:
+            current_time: Current timestamp
+        """
+        cutoff_time = current_time - self.window_seconds
+        identifiers_to_remove = []
+        
+        for identifier in list(self._request_store.keys()):
+            # Clean old timestamps
+            self._request_store[identifier] = [
+                timestamp for timestamp in self._request_store[identifier]
+                if timestamp > cutoff_time
+            ]
+            
+            # Mark empty entries for removal
+            if not self._request_store[identifier]:
+                identifiers_to_remove.append(identifier)
+        
+        # Remove empty entries
+        for identifier in identifiers_to_remove:
+            del self._request_store[identifier]
+        
+        if identifiers_to_remove:
+            self.logger.debug(
+                "Rate limiter global cleanup completed",
+                removed_identifiers=len(identifiers_to_remove),
+                remaining_identifiers=len(self._request_store)
+            )
     
     def _check_rate_limit(
         self, identifier: str, current_time: float
@@ -175,6 +199,11 @@ class RateLimiter(BaseHTTPMiddleware):
         # Get client identifier
         identifier = self._get_client_identifier(request)
         current_time = time.time()
+        
+        # Periodic global cleanup
+        if current_time - self._last_global_cleanup > self.CLEANUP_INTERVAL_SECONDS:
+            self._global_cleanup(current_time)
+            self._last_global_cleanup = current_time
         
         # Check rate limit
         is_allowed, retry_after = self._check_rate_limit(identifier, current_time)
@@ -239,6 +268,7 @@ class RateLimiter(BaseHTTPMiddleware):
         This is primarily useful for testing.
         """
         self._request_store.clear()
+        self._last_global_cleanup = time.time()
         self.logger.info("Rate limiter reset")
     
     def get_request_count(self, identifier: str) -> int:

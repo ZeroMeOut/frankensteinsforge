@@ -1,4 +1,4 @@
-"""Metrics collection and tracking for API monitoring"""
+"""Metrics collection and tracking for API monitoring with memory limits"""
 
 import time
 from typing import Dict, List, Optional
@@ -23,7 +23,14 @@ class MetricsCollector:
     """
     Collects and tracks API metrics including request counts, 
     error rates, and latency percentiles.
+    
+    Memory optimized with sliding window approach.
     """
+    
+    # Memory optimization: Only keep last hour of data
+    RETENTION_WINDOW_SECONDS = 3600  # 1 hour
+    # Maximum requests to store
+    MAX_REQUESTS = 10000
     
     def __init__(self):
         """Initialize metrics collector"""
@@ -32,7 +39,44 @@ class MetricsCollector:
         self._request_counts: Dict[str, int] = {}
         self._error_counts: Dict[str, int] = {}
         self._latencies: Dict[str, List[float]] = {}
+        self._last_cleanup = time.time()
         
+    def _cleanup_old_requests(self) -> None:
+        """Remove requests outside retention window to prevent memory leak."""
+        current_time = time.time()
+        cutoff_time = current_time - self.RETENTION_WINDOW_SECONDS
+        
+        # Remove old requests
+        old_count = len(self._requests)
+        self._requests = [r for r in self._requests if r.timestamp > cutoff_time]
+        new_count = len(self._requests)
+        
+        # If still too many, keep only most recent
+        if new_count > self.MAX_REQUESTS:
+            self._requests = self._requests[-self.MAX_REQUESTS:]
+            new_count = len(self._requests)
+        
+        # Rebuild counts and latencies from remaining requests
+        if old_count != new_count:
+            self._rebuild_aggregates()
+    
+    def _rebuild_aggregates(self) -> None:
+        """Rebuild aggregate counts and latencies from current requests."""
+        self._request_counts.clear()
+        self._error_counts.clear()
+        self._latencies.clear()
+        
+        for req in self._requests:
+            key = f"{req.method} {req.endpoint}"
+            self._request_counts[key] = self._request_counts.get(key, 0) + 1
+            
+            if req.status_code >= 400:
+                self._error_counts[key] = self._error_counts.get(key, 0) + 1
+            
+            if key not in self._latencies:
+                self._latencies[key] = []
+            self._latencies[key].append(req.latency_ms)
+    
     def record_request(
         self,
         endpoint: str,
@@ -52,9 +96,16 @@ class MetricsCollector:
             error: Optional error message if request failed
         """
         with self._lock:
+            current_time = time.time()
+            
+            # Periodic cleanup (every 5 minutes)
+            if current_time - self._last_cleanup > 300:
+                self._cleanup_old_requests()
+                self._last_cleanup = current_time
+            
             # Create metrics record
             metrics = RequestMetrics(
-                timestamp=time.time(),
+                timestamp=current_time,
                 endpoint=endpoint,
                 method=method,
                 status_code=status_code,
@@ -77,6 +128,10 @@ class MetricsCollector:
             if key not in self._latencies:
                 self._latencies[key] = []
             self._latencies[key].append(latency_ms)
+            
+            # Immediate cleanup if we hit max requests
+            if len(self._requests) > self.MAX_REQUESTS:
+                self._cleanup_old_requests()
     
     def get_metrics(self) -> Dict:
         """
@@ -86,6 +141,9 @@ class MetricsCollector:
             Dictionary containing request counts, error rates, and latency percentiles
         """
         with self._lock:
+            # Force cleanup before returning metrics
+            self._cleanup_old_requests()
+            
             total_requests = len(self._requests)
             total_errors = sum(1 for r in self._requests if r.status_code >= 400)
             
@@ -142,7 +200,9 @@ class MetricsCollector:
                 "error_rate": round(error_rate, 2),
                 "latency_percentiles": latency_percentiles,
                 "endpoints": endpoint_metrics,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
+                "retention_window_seconds": self.RETENTION_WINDOW_SECONDS,
+                "max_requests": self.MAX_REQUESTS
             }
     
     def _percentile(self, sorted_data: List[float], percentile: int) -> float:
@@ -183,6 +243,7 @@ class MetricsCollector:
             self._request_counts.clear()
             self._error_counts.clear()
             self._latencies.clear()
+            self._last_cleanup = time.time()
 
 
 # Global metrics collector instance

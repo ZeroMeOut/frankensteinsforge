@@ -11,17 +11,24 @@ from pythonjsonlogger import jsonlogger
 class SensitiveDataRedactor:
     """Utility for redacting sensitive information from logs."""
     
-    # Patterns for sensitive data
+    # Patterns for sensitive data (compiled once for performance)
     API_KEY_PATTERN = re.compile(r'(api[_-]?key|apikey|key)[\s:=]+(["\']?)([a-zA-Z0-9_\-]{20,})(["\']?)', re.IGNORECASE)
-    # Pattern to match standalone API key-like strings (20+ alphanumeric chars)
     STANDALONE_KEY_PATTERN = re.compile(r'\b([a-zA-Z0-9_\-]{20,})\b')
     EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
     PHONE_PATTERN = re.compile(r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b')
     SSN_PATTERN = re.compile(r'\b\d{3}-\d{2}-\d{4}\b')
     CREDIT_CARD_PATTERN = re.compile(r'\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b')
     
-    # Track redacted keys to catch them appearing elsewhere
+    # Track redacted keys with size limit to prevent memory leak
     _redacted_keys = set()
+    _MAX_REDACTED_KEYS = 100
+    
+    @classmethod
+    def _cleanup_redacted_keys(cls):
+        """Keep only the most recent keys to prevent unbounded growth."""
+        if len(cls._redacted_keys) > cls._MAX_REDACTED_KEYS:
+            # Keep only the first MAX_REDACTED_KEYS items
+            cls._redacted_keys = set(list(cls._redacted_keys)[:cls._MAX_REDACTED_KEYS])
     
     @classmethod
     def redact(cls, text: str) -> str:
@@ -40,6 +47,7 @@ class SensitiveDataRedactor:
         def redact_and_track(match):
             key_value = match.group(3)
             cls._redacted_keys.add(key_value)
+            cls._cleanup_redacted_keys()  # Prevent unbounded growth
             return f'{match.group(1)}{match.group(2)}[REDACTED]{match.group(4)}'
         
         text = cls.API_KEY_PATTERN.sub(redact_and_track, text)

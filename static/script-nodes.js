@@ -1196,6 +1196,9 @@ function displayResult(idea) {
     const resultCard = document.createElement('div');
     resultCard.className = 'result-card';
     
+    // Store the raw idea text as a data attribute (safe from escaping issues)
+    resultCard.dataset.ideaText = idea;
+    
     const timestamp = new Date().toLocaleString();
     const formattedIdea = idea
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -1204,17 +1207,34 @@ function displayResult(idea) {
     resultCard.innerHTML = `
         <div class="result-header">
             <span class="result-timestamp">${timestamp}</span>
-            <button class="icon-btn" onclick="this.closest('.result-card').remove()">🗑️</button>
+            <button class="icon-btn delete-result">🗑️</button>
         </div>
         <div class="result-content">${formattedIdea}</div>
         <div class="result-actions">
-            <button class="result-btn primary" onclick="turnIdeaIntoNode(this, \`${idea.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)">
+            <button class="result-btn primary turn-into-node">
                 ➕ Turn into Node
             </button>
-            <button class="result-btn" onclick="copyResult(this)">📋 Copy</button>
+            <button class="result-btn copy-result">📋 Copy</button>
         </div>
         <div class="result-steps hidden"></div>
     `;
+    
+    // Add event listeners (safer than inline onclick with special characters)
+    const deleteBtn = resultCard.querySelector('.delete-result');
+    deleteBtn.addEventListener('click', () => {
+        resultCard.remove();
+    });
+    
+    const turnIntoNodeBtn = resultCard.querySelector('.turn-into-node');
+    turnIntoNodeBtn.addEventListener('click', () => {
+        const ideaText = resultCard.dataset.ideaText;
+        turnIdeaIntoNode(turnIntoNodeBtn, ideaText);
+    });
+    
+    const copyBtn = resultCard.querySelector('.copy-result');
+    copyBtn.addEventListener('click', () => {
+        copyResult(copyBtn);
+    });
     
     container.insertBefore(resultCard, container.firstChild);
 }
@@ -1231,22 +1251,44 @@ function copyResult(button) {
 }
 
 function turnIdeaIntoNode(button, ideaText) {
-    // Create a text node from the idea
-    const node = graph.createNodeFromIdea(ideaText);
-    
-    if (node) {
-        // Give visual feedback
-        const originalText = button.textContent;
-        button.textContent = '✓ Node Created!';
-        button.style.background = '#4ade80';
-        button.style.color = '#0a0a0a';
+    try {
+        // Ensure canvas is properly sized before creating node
+        if (graph.canvas.width === 0 || graph.canvas.height === 0) {
+            console.warn('Canvas not properly sized, resizing...');
+            graph.resizeCanvas();
+        }
         
-        // Reset button after 2 seconds
-        setTimeout(() => {
-            button.textContent = originalText;
-            button.style.background = '';
-            button.style.color = '';
-        }, 2000);
+        // Create a text node from the idea
+        const node = graph.createNodeFromIdea(ideaText);
+        
+        if (node) {
+            // Give visual feedback
+            const originalText = button.textContent;
+            button.textContent = '✓ Node Created!';
+            button.style.background = '#4ade80';
+            button.style.color = '#0a0a0a';
+            
+            // Reset button after 2 seconds
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.style.background = '';
+                button.style.color = '';
+            }, 2000);
+        } else {
+            // Show error feedback
+            button.textContent = '✗ Failed';
+            button.style.background = '#ef4444';
+            button.style.color = '#ffffff';
+            
+            setTimeout(() => {
+                button.textContent = '➕ Turn into Node';
+                button.style.background = '';
+                button.style.color = '';
+            }, 2000);
+        }
+    } catch (error) {
+        console.error('Error creating node from idea:', error);
+        alert('Failed to create node: ' + error.message);
     }
 }
 
